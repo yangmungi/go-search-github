@@ -17,49 +17,50 @@ func main() {
 
 	bctx := context.TODO()
 
-	do(bctx, *sizeFlag, *timeoutFlag)
-}
+	err := func() error {
+		ctx, cancel := context.WithTimeout(bctx, time.Duration(*timeoutFlag)*time.Second)
+		defer cancel()
 
-func do(bctx context.Context, size, timeout int) error {
-	ctx, cancel := context.WithTimeout(bctx, time.Duration(timeout)*time.Second)
-	defer cancel()
+		cli := github.NewClient(nil)
+		search := fmt.Sprintf("language:Go size:>%d", *sizeFlag)
 
-	cli := github.NewClient(nil)
-	search := fmt.Sprintf("language:Go size:>%d", size)
+		log.Printf("search:%s", search)
+		result, _, err := cli.Search.Repositories(ctx, search, &github.SearchOptions{
+			ListOptions: github.ListOptions{
+				Page:    1,
+				PerPage: 100,
+			},
+		})
 
-	log.Printf("search:%s", search)
-	result, _, err := cli.Search.Repositories(ctx, search, &github.SearchOptions{
-		ListOptions: github.ListOptions{
-			Page:    1,
-			PerPage: 100,
-		},
-	})
+		if result == nil && err == nil {
+			err = fmt.Errorf("missing result; no err")
+		}
 
-	if result == nil && err == nil {
-		err = fmt.Errorf("missing result; no err")
-	}
+		if err != nil {
+			return err
+		}
+
+		log.Printf("results:%d incomplete:%v", *result.Total, *result.IncompleteResults)
+
+		re := &repo.Repo{}
+
+		for _, r := range result.Repositories {
+			//log.Printf("%+v", r)
+			url := r.CloneURL
+			if url == nil {
+				continue
+			}
+
+			err := re.CloneAndAnalyze(*url)
+			if err != nil {
+				log.Println(err)
+			}
+		}
+
+		return nil
+	}()
 
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
-
-	log.Printf("results:%d incomplete:%v", *result.Total, *result.IncompleteResults)
-
-	re := new(repo.Repo)
-	re.Progress = new(repo.ProgressPrintf)
-
-	for _, r := range result.Repositories {
-		//log.Printf("%+v", r)
-		url := r.CloneURL
-		if url == nil {
-			continue
-		}
-
-		err := re.CloneAndAnalyze(*url)
-		if err != nil {
-			log.Println(err)
-		}
-	}
-
-	return nil
 }

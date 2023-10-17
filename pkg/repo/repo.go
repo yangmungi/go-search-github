@@ -1,7 +1,6 @@
 package repo
 
 import (
-	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -9,43 +8,22 @@ import (
 	"strings"
 
 	"github.com/go-git/go-billy/v5"
-	"github.com/go-git/go-billy/v5/memfs"
-	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/protocol/packp/sideband"
-	"github.com/go-git/go-git/v5/storage/memory"
+	"github.com/yangmungi/go-search-github/pkg/gitimpl"
 )
 
 type Repo struct {
-	Progress sideband.Progress
-}
-
-type ProgressPrintf struct{}
-
-func (p *ProgressPrintf) Write(b []byte) (int, error) {
-	fmt.Printf("%s", string(b))
-	return len(b), nil
+	Git gitimpl.Git
 }
 
 func (r *Repo) CloneAndAnalyze(url string) error {
 	log.Printf("clone %s", url)
 
-	fs := memfs.New()
-	s := memory.NewStorage()
-
-	_, err := git.Clone(s, fs, &git.CloneOptions{
-		URL: url,
-
-		ReferenceName: plumbing.HEAD,
-		SingleBranch:  true,
-		Depth:         1,
-
-		Progress: r.Progress,
-	})
-
+	fs, err := r.Git.Clone(url)
 	if err != nil {
 		return err
 	}
+
+	defer r.Git.Clean(fs)
 
 	return Recurse(fs, ".", func(filename string) {
 		if !strings.HasSuffix(filename, ".go") {
